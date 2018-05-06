@@ -1,2 +1,2 @@
 all:plugin.h plugin.cc
-	g++ plugin.cc -fPIC -shared -o plugin.so
+	g++ plugin.cc -fPIC -shared -o echo.so

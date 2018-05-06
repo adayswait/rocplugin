@@ -35,12 +35,14 @@ struct roc_svr_s;
 struct roc_link_s;
 typedef struct roc_svr_s roc_svr;
 typedef struct roc_link_s roc_link;
-typedef void roc_handle_func_link(roc_link *link);
-typedef void roc_handle_func_svr(roc_svr *svr);
+typedef void roc_handle_func_link(roc_link *link, void *custom_data);
+typedef void roc_handle_func_svr(roc_svr *svr, void *custom_data);
 typedef int roc_send_func(roc_link *link, void *buf, int len);
 typedef void roc_log_func(int level, const char *format, ...);
 
-typedef struct
+struct roc_plugin_s;
+typedef struct roc_plugin_s roc_plugin;
+struct roc_plugin_s
 {
     void *so_handle;
     void *data_so_handle;
@@ -50,7 +52,8 @@ typedef struct
 
     roc_handle_func_svr *init_handler;
     roc_handle_func_svr *fini_handler;
-} roc_plugin;
+    int level; /* level == -1表示该插件未初始化 */
+};
 
 #define ROC_EVENT_NONE 0
 #define ROC_EVENT_INPUT 1
@@ -125,6 +128,8 @@ typedef struct roc_evt_loop
     struct epoll_event *ret_evts;
 } roc_evt_loop;
 
+#define ROC_PLUGIN_MAX 16
+
 struct roc_svr_s
 {
     int fd;
@@ -134,9 +139,10 @@ struct roc_svr_s
     int backlog;
     int maxlink;
     int nonblock;
+    int next_plugin_level;
     roc_evt_loop *evt_loop;
     roc_handle_func_link *handler[ROC_SOCK_EVTEND];
-    roc_plugin *plugin;
+    roc_plugin plugin[ROC_PLUGIN_MAX];
     roc_send_func *send;
     roc_log_func *log;
 };
@@ -146,6 +152,7 @@ struct roc_link_s
     int fd;
     int port;
     char *ip;
+    int next_plugin_level;
     roc_ringbuf *ibuf;
     roc_ringbuf *obuf;
     roc_evt_loop *evt_loop;
@@ -166,47 +173,47 @@ roc_log_func *log;
 #define ROC_LOG_LEVEL_INFO 7
 #define ROC_LOG_LEVEL_DEBUG 8
 
-#define ROC_LOG_STDERR(format, ...)                         \
+#define ROC_LOG_STDERR(format, ...) \
     log(ROC_LOG_LEVEL_STDERR, format, ##__VA_ARGS__);
-#define ROC_LOG_EMERG(format, ...)                          \
-    if (plugin_log_level >= ROC_LOG_LEVEL_EMERG)            \
-    {                                                       \
-        log(ROC_LOG_LEVEL_EMERG, format, ##__VA_ARGS__);    \
+#define ROC_LOG_EMERG(format, ...)                       \
+    if (plugin_log_level >= ROC_LOG_LEVEL_EMERG)         \
+    {                                                    \
+        log(ROC_LOG_LEVEL_EMERG, format, ##__VA_ARGS__); \
     }
-#define ROC_LOG_ALERT(format, ...)                          \
-    if (plugin_log_level >= ROC_LOG_LEVEL_ALERT)            \
-    {                                                       \
-        log(ROC_LOG_LEVEL_ALERT, format, ##__VA_ARGS__);    \
+#define ROC_LOG_ALERT(format, ...)                       \
+    if (plugin_log_level >= ROC_LOG_LEVEL_ALERT)         \
+    {                                                    \
+        log(ROC_LOG_LEVEL_ALERT, format, ##__VA_ARGS__); \
     }
-#define ROC_LOG_CRIT(format, ...)                           \
-    if (plugin_log_level >= ROC_LOG_LEVEL_CRIT)             \
-    {                                                       \
-        log(ROC_LOG_LEVEL_CRIT, format, ##__VA_ARGS__);     \
+#define ROC_LOG_CRIT(format, ...)                       \
+    if (plugin_log_level >= ROC_LOG_LEVEL_CRIT)         \
+    {                                                   \
+        log(ROC_LOG_LEVEL_CRIT, format, ##__VA_ARGS__); \
     }
-#define ROC_LOG_ERR(format, ...)                            \
-    if (plugin_log_level >= ROC_LOG_LEVEL_ERR)              \
-    {                                                       \
-        log(ROC_LOG_LEVEL_ERR, format, ##__VA_ARGS__);      \
+#define ROC_LOG_ERR(format, ...)                       \
+    if (plugin_log_level >= ROC_LOG_LEVEL_ERR)         \
+    {                                                  \
+        log(ROC_LOG_LEVEL_ERR, format, ##__VA_ARGS__); \
     }
-#define ROC_LOG_WARN(format, ...)                           \
-    if (plugin_log_level >= ROC_LOG_LEVEL_WARN)             \
-    {                                                       \
-        log(ROC_LOG_LEVEL_WARN, format, ##__VA_ARGS__);     \
+#define ROC_LOG_WARN(format, ...)                       \
+    if (plugin_log_level >= ROC_LOG_LEVEL_WARN)         \
+    {                                                   \
+        log(ROC_LOG_LEVEL_WARN, format, ##__VA_ARGS__); \
     }
-#define ROC_LOG_NOTICE(format, ...)                         \
-    if (plugin_log_level >= ROC_LOG_LEVEL_NOTICE)           \
-    {                                                       \
-        log(ROC_LOG_LEVEL_NOTICE, format, ##__VA_ARGS__);   \
+#define ROC_LOG_NOTICE(format, ...)                       \
+    if (plugin_log_level >= ROC_LOG_LEVEL_NOTICE)         \
+    {                                                     \
+        log(ROC_LOG_LEVEL_NOTICE, format, ##__VA_ARGS__); \
     }
-#define ROC_LOG_INFO(format, ...)                           \
-    if (plugin_log_level >= ROC_LOG_LEVEL_INFO)             \
-    {                                                       \
-        log(ROC_LOG_LEVEL_INFO, format, ##__VA_ARGS__);     \
+#define ROC_LOG_INFO(format, ...)                       \
+    if (plugin_log_level >= ROC_LOG_LEVEL_INFO)         \
+    {                                                   \
+        log(ROC_LOG_LEVEL_INFO, format, ##__VA_ARGS__); \
     }
-#define ROC_LOG_DEBUG(format, ...)                          \
-    if (plugin_log_level >= ROC_LOG_LEVEL_DEBUG)            \
-    {                                                       \
-        log(ROC_LOG_LEVEL_DEBUG, format, ##__VA_ARGS__);    \
+#define ROC_LOG_DEBUG(format, ...)                       \
+    if (plugin_log_level >= ROC_LOG_LEVEL_DEBUG)         \
+    {                                                    \
+        log(ROC_LOG_LEVEL_DEBUG, format, ##__VA_ARGS__); \
     }
 
 #endif
