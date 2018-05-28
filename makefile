@@ -1,2 +1,2 @@
-all:plugin.h plugin.cc
-	g++ plugin.cc -fPIC -shared -o echo.so
+all:roc_interface.h roc_interface.cc
+	g++ roc_interface.cc -fPIC -shared -o echo.so
